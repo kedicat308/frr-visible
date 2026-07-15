@@ -1,0 +1,28 @@
+# Minimal single-binary Tempo for the frr-visible lab: accept Zipkin + OTLP,
+# store traces on local disk. trace-aggregator pushes the cross-device
+# distributed convergence traces here (as Zipkin v2 spans); Grafana queries
+# them via the Tempo datasource. See design.md §15.8.
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    zipkin:
+      endpoint: "0.0.0.0:9411"
+    otlp:
+      protocols:
+        http:
+          endpoint: "0.0.0.0:4318"
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false

@@ -1,0 +1,246 @@
+{
+  "uid": "frr-visible",
+  "title": "FRR-visible — 8-node MPLS L3VPN (gNMI shim)",
+  "tags": ["frr", "gnmi", "shim"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(host_container_memory_state_current, source)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "layer",
+        "label": "拓扑层 / topology layer",
+        "type": "custom",
+        "query": "physical,vlan,ospf,bgp,mpls",
+        "options": [
+          { "text": "physical", "value": "physical", "selected": true },
+          { "text": "vlan", "value": "vlan", "selected": false },
+          { "text": "ospf", "value": "ospf", "selected": false },
+          { "text": "bgp", "value": "bgp", "selected": false },
+          { "text": "mpls", "value": "mpls", "selected": false }
+        ],
+        "current": { "text": "physical", "value": "physical" }
+      }
+    ]
+  },
+  "panels": [
+    { "type": "row", "title": "Fleet / 集群总览", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 1 },
+
+    {
+      "id": 2, "type": "stat", "title": "Nodes monitored / 受监控节点",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "targets": [ { "refId": "A", "expr": "count(count by(source)(host_container_memory_state_current))", "instant": true } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "id": 3, "type": "stat", "title": "BGP sessions Established / BGP 已建立",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "targets": [ { "refId": "A", "expr": "count(openconfig_network_instances_network_instance_protocols_protocol_bgp_neighbors_neighbor_state_session_state == 6)", "instant": true } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "id": 4, "type": "stat", "title": "OSPF adjacencies FULL / OSPF 邻接",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "targets": [ { "refId": "A", "expr": "count(openconfig_network_instances_network_instance_protocols_protocol_ospfv2_areas_area_interfaces_interface_neighbors_neighbor_state_adjacency_state == 6)", "instant": true } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" } } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "id": 5, "type": "stat", "title": "L3VPN routes / VPN 路由数",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "targets": [ { "refId": "A", "expr": "count(frr_bgp_rib_afi_safis_afi_safi_routes_route_state_label)", "instant": true } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" } } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+    },
+    {
+      "id": 6, "type": "text", "title": "Topology / 拓扑 (8 nodes)",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "options": { "mode": "markdown", "content": "**Core (MPLS):**  PE1 -- P1 -- P2 -- PE2\n\n**Edge (VRF cust):**  ce1,ce2 -> PE1  |  ce3,ce4 -> PE2\n\n2x PE, 2x P, 4x CE  |  OSPF+LDP core, iBGP VPNv4, eBGP PE-CE" }
+    },
+    {
+      "id": 7, "type": "stat", "title": "on-change 遥测健康 (1=OK)",
+      "description": "BGP/OSPF/FIB 的 on-change 序列是否都在。STALE/0 = 采集器订阅可能僵死(接口计数器 sample 还在、但控制面 on-change 消失)。手动修复:docker restart gnmic-frr。见 frr-visible-mgmt 讨论(保 on-change + 只报警不自动重启)。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "targets": [ { "refId": "A", "instant": true, "expr": "clamp_max((count(openconfig_network_instances_network_instance_protocols_protocol_bgp_neighbors_neighbor_state_session_state) or vector(0)),1) * clamp_max((count(openconfig_network_instances_network_instance_protocols_protocol_ospfv2_areas_area_interfaces_interface_neighbors_neighbor_state_adjacency_state) or vector(0)),1) * clamp_max((count(openconfig_network_instances_network_instance_afts_ipv4_unicast_ipv4_entry_state_next_hop) or vector(0)),1)" } ],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }, "mappings": [ { "type": "value", "options": { "0": { "text": "STALE" }, "1": { "text": "OK" } } } ] } },
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" }
+    },
+
+    { "type": "row", "title": "1 · Container CPU / Memory (cgroup)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 }, "id": 10 },
+    {
+      "id": 11, "type": "timeseries", "title": "Container CPU % / 容器 CPU",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [ { "refId": "A", "expr": "rate(host_container_cpu_state_usage_usec{source=~\"$node\"}[1m]) / 10000", "legendFormat": "{{source}}" } ],
+      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Container memory / 容器内存",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [ { "refId": "A", "expr": "host_container_memory_state_current{source=~\"$node\"}", "legendFormat": "{{source}}" } ],
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+
+    { "type": "row", "title": "2 · Interfaces (netlink)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "id": 20 },
+    {
+      "id": 21, "type": "timeseries", "title": "Ingress bit/s / 入向速率",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "targets": [ { "refId": "A", "expr": "rate(openconfig_interfaces_interface_state_counters_in_octets{source=~\"$node\"}[1m]) * 8", "legendFormat": "{{source}}/{{interface_name}}" } ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Egress bit/s / 出向速率",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "targets": [ { "refId": "A", "expr": "rate(openconfig_interfaces_interface_state_counters_out_octets{source=~\"$node\"}[1m]) * 8", "legendFormat": "{{source}}/{{interface_name}}" } ],
+      "fieldConfig": { "defaults": { "unit": "bps", "custom": { "drawStyle": "line", "fillOpacity": 10 } } }
+    },
+    {
+      "id": 23, "type": "state-timeline", "title": "Interface oper-status (1=UP 0=DOWN) / 端口状态",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 23 },
+      "targets": [ { "refId": "A", "expr": "openconfig_interfaces_interface_state_oper_status{source=~\"$node\"}", "legendFormat": "{{source}}/{{interface_name}}" } ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 80 }, "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } } } ], "min": 0, "max": 1 } },
+      "options": { "mergeValues": true, "showValue": "never" }
+    },
+
+    { "type": "row", "title": "5·6·7 · OSPF / BGP / LLDP neighbors", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 31 }, "id": 30 },
+    {
+      "id": 31, "type": "table", "title": "OSPF neighbors / OSPF 邻居",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 32 },
+      "targets": [ { "refId": "A", "expr": "openconfig_network_instances_network_instance_protocols_protocol_ospfv2_areas_area_interfaces_interface_neighbors_neighbor_state_adjacency_state{source=~\"$node\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "network_instance_name": true, "protocol_identifier": true, "protocol_name": true, "area_identifier": true }, "renameByName": { "source": "node", "interface_id": "interface", "neighbor_router_id": "neighbor", "Value": "state" } } } ],
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "6": { "text": "FULL", "color": "green" }, "0": { "text": "DOWN", "color": "red" } } } ] }, "overrides": [ { "matcher": { "id": "byName", "options": "state" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } } ] } ] }
+    },
+    {
+      "id": 32, "type": "table", "title": "BGP neighbors / BGP 邻居",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 32 },
+      "targets": [ { "refId": "A", "expr": "openconfig_network_instances_network_instance_protocols_protocol_bgp_neighbors_neighbor_state_session_state{source=~\"$node\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "protocol_identifier": true, "protocol_name": true }, "renameByName": { "source": "node", "network_instance_name": "vrf", "neighbor_neighbor_address": "neighbor", "Value": "state" } } }, { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "node" }, { "field": "vrf" } ] } } ],
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "6": { "text": "ESTABLISHED", "color": "green" }, "1": { "text": "IDLE", "color": "red" }, "3": { "text": "ACTIVE", "color": "orange" } } } ] }, "overrides": [ { "matcher": { "id": "byName", "options": "state" }, "properties": [ { "id": "custom.cellOptions", "value": { "type": "color-background" } } ] } ] }
+    },
+    {
+      "id": 33, "type": "table", "title": "LLDP neighbors / LLDP 邻居",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 32 },
+      "targets": [ { "refId": "A", "expr": "openconfig_lldp_interfaces_interface_neighbors_neighbor_state_system_name{source=~\"$node\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "Value": true, "neighbor_id": true }, "renameByName": { "source": "node", "interface_name": "local-if", "system_name": "remote" } } } ]
+    },
+
+    { "type": "row", "title": "3·4·8 · FDB / FIB / MPLS L3VPN", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 40 }, "id": 40 },
+    {
+      "id": 41, "type": "table", "title": "L3VPN routes (RD / prefix / label) / VPN 路由",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 41 },
+      "targets": [ { "refId": "A", "expr": "frr_bgp_rib_afi_safis_afi_safi_routes_route_state_label{source=~\"$node\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "afi_safi_name": true }, "renameByName": { "source": "node", "route_rd": "RD", "route_prefix": "prefix", "Value": "label" } } } ]
+    },
+    {
+      "id": 42, "type": "table", "title": "FIB / MPLS forwarding (AFT next-hop) / 转发表",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 41 },
+      "targets": [ { "refId": "A", "expr": "openconfig_network_instances_network_instance_afts_ipv4_unicast_ipv4_entry_state_next_hop{source=~\"$node\",ipv4_entry_prefix!~\"^(0.0.0.0/0|172.31..*)$\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "Value": true }, "renameByName": { "source": "node", "network_instance_name": "vrf", "ipv4_entry_prefix": "prefix", "next_hop": "next-hop" } } }, { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "node" }, { "field": "prefix" } ] } } ]
+    },
+    {
+      "id": 43, "type": "table", "title": "Bridge FDB / MAC table (VLAN) / 二层转发表",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 50 },
+      "targets": [ { "refId": "A", "expr": "openconfig_network_instances_network_instance_fdb_mac_table_entries_entry_state_mac_address{source=~\"$node\"}", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "target": true, "subscription_name": true, "Value": true, "network_instance_name": true }, "renameByName": { "source": "node", "entry_mac_address": "MAC", "entry_vlan": "VLAN", "mac_address": "MAC" } } } ]
+    },
+    {
+      "id": 44, "type": "bargauge", "title": "FIB routes per node / 各节点路由数",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 50 },
+      "targets": [ { "refId": "A", "expr": "count(openconfig_network_instances_network_instance_afts_ipv4_unicast_ipv4_entry_state_next_hop{source=~\"$node\"}) by (source)", "instant": true, "legendFormat": "{{source}}" } ],
+      "options": { "orientation": "horizontal", "displayMode": "gradient" },
+      "fieldConfig": { "defaults": { "color": { "mode": "continuous-BlPu" } } }
+    },
+    { "type": "row", "title": "Trace · gNMI path trace (frr-visible)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 }, "id": 50 },
+    {
+      "id": 51, "type": "stat", "title": "Flow reachable (1=OK) / 流可达",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 0, "y": 57 },
+      "targets": [ { "refId": "A", "expr": "frr_pathtrace_reachable", "instant": true, "legendFormat": "{{flow}}" } ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background", "textMode": "value_and_name", "orientation": "horizontal" },
+      "fieldConfig": { "defaults": { "mappings": [ { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "OK", "color": "green" } } } ], "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] } } }
+    },
+    {
+      "id": 52, "type": "stat", "title": "Hops per flow / 每流跳数",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 57 },
+      "targets": [ { "refId": "A", "expr": "frr_pathtrace_hops", "instant": true, "legendFormat": "{{flow}}" } ],
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "value", "textMode": "value_and_name", "orientation": "horizontal" },
+      "fieldConfig": { "defaults": { "color": { "mode": "continuous-BlPu" } } }
+    },
+    {
+      "id": 53, "type": "table", "title": "Current path — per hop (node / kind / next-hop / labels) / 当前路径逐跳",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 62 },
+      "targets": [ { "refId": "A", "expr": "frr_pathtrace_hop_info", "instant": true, "format": "table" } ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true, "Value": true }, "indexByName": { "flow": 0, "seq": 1, "node": 2, "kind": 3, "nexthop": 4, "labels": 5, "detail": 6 }, "renameByName": { "nexthop": "next-hop" } } }, { "id": "sortBy", "options": { "fields": {}, "sort": [ { "field": "flow" }, { "field": "seq" } ] } } ]
+    },
+    {
+      "id": 54, "type": "table",
+      "title": "Convergence traces (Tempo) — click a Trace ID for the cross-device waterfall / 跨设备收敛 trace",
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 73 },
+      "targets": [ { "refId": "A", "datasource": { "type": "tempo", "uid": "tempo" }, "queryType": "traceqlSearch", "query": "{}", "limit": 20, "tableType": "traces", "filters": [] } ]
+    },
+    {
+      "id": 55, "type": "text", "title": "跨设备收敛瀑布 (Tempo) / how to view",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 82 },
+      "options": { "mode": "markdown", "content": "上表点 **Trace ID** 展开跨设备 span 瀑布(pe1 -> p1 -> ... -> ce 的收敛时间线);若表为空,点这里 [在 Explore 打开 Tempo](/explore) -> 选 **Tempo** 数据源 -> TraceQL 输入 `{}` -> 点任一 trace。" }
+    },
+    { "type": "row", "title": "拓扑 · 多层节点图 (物理/VLAN/OSPF/BGP/MPLS,源自 gNMI)", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 85 }, "id": 59 },
+    {
+      "id": 60, "type": "nodeGraph", "title": "Topology — $layer 层 / 多层拓扑",
+      "description": "同一批节点上的多层拓扑,数据来自 topology-exporter(直读各 shim gNMI):physical=LLDP 邻接, vlan=bridge/FDB 二层域, ospf=IGP 邻接, bgp=BGP 会话(iBGP 是跨核心逻辑边), mpls=LFIB 标签交换段。用左上角 layer 变量切换。",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 15, "w": 24, "x": 0, "y": 86 },
+      "targets": [
+        { "refId": "nodes", "expr": "frr_topo_node{layer=\"$layer\"}", "instant": true, "format": "table" },
+        { "refId": "edges", "expr": "frr_topo_edge{layer=\"$layer\"}", "instant": true, "format": "table" }
+      ],
+      "transformations": [ { "id": "organize", "options": { "excludeByName": { "Time": true, "Value": true, "__name__": true, "job": true, "instance": true, "layer": true }, "renameByName": { "role": "mainstat", "detail": "mainstat" } } } ]
+    },
+    { "type": "row", "title": "告警 / Alerts", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 101 }, "id": 69 },
+    {
+      "id": 70, "type": "alertlist", "title": "故障告警 / Fault alerts (接口·VLAN·MPLS·OSPF·BGP·VPN + 遥测)",
+      "description": "Grafana 统一告警的当前状态。firing=触发中, pending=已检出待计时, normal=正常。空的 firing/pending = 无故障。规则见 provisioning/alerting/alert-rules.yaml。",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 102 },
+      "options": {
+        "showOptions": "current",
+        "maxItems": 30,
+        "sortOrder": 3,
+        "dashboardAlerts": false,
+        "groupMode": "default",
+        "alertInstanceLabelFilter": "",
+        "stateFilter": { "firing": true, "pending": true, "error": true, "noData": true, "normal": true, "inactive": true }
+      }
+    }
+  ]
+}

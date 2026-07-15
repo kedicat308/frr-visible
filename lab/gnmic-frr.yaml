@@ -1,0 +1,154 @@
+# gnmic-frr.yaml — dedicated gnmic collector for the 5 FRR+shim nodes.
+# Subscribes to the shim's gNMI :9339 (3 origins: openconfig / frr / host) and
+# exposes a Prometheus endpoint on :9806. Kept separate from the cEOS gnmic.
+insecure: true
+encoding: json_ietf
+log: true
+
+targets:
+  172.31.0.11:9339:  { name: pe1 }
+  172.31.0.12:9339:  { name: pe2 }
+  172.31.0.21:9339:  { name: p1 }
+  172.31.0.22:9339:  { name: p2 }
+  172.31.0.101:9339: { name: ce1 }
+  172.31.0.102:9339: { name: ce2 }
+  172.31.0.103:9339: { name: ce3 }
+  172.31.0.104:9339: { name: ce4 }
+
+subscriptions:
+  # 1. container CPU / memory (host origin) — true gauges, SAMPLE
+  cgroup:
+    paths:
+      - "host:/container/cpu/state/usage-usec"
+      - "host:/container/cpu/state/user-usec"
+      - "host:/container/cpu/state/system-usec"
+      - "host:/container/memory/state/current"
+    stream-mode: sample
+    sample-interval: 10s
+
+  # NOTE: this cache matches unkeyed list elements literally, not as wildcards,
+  # so every list key must be given explicitly as [key=*]. (gNMI spec treats a
+  # missing key as "all"; here we spell it out — see design.md gotchas.)
+
+  # 2a. interface status — event-driven
+  if-status:
+    paths:
+      - "openconfig:/interfaces/interface[name=*]/state/oper-status"
+      - "openconfig:/interfaces/interface[name=*]/state/admin-status"
+    stream-mode: on-change
+  # 2b. interface counters — SAMPLE (Prometheus rate() -> bps/pps)
+  if-counters:
+    paths:
+      - "openconfig:/interfaces/interface[name=*]/state/counters/in-octets"
+      - "openconfig:/interfaces/interface[name=*]/state/counters/out-octets"
+      - "openconfig:/interfaces/interface[name=*]/state/counters/in-pkts"
+      - "openconfig:/interfaces/interface[name=*]/state/counters/out-pkts"
+    stream-mode: sample
+    sample-interval: 5s
+
+  # 3. bridge FDB / VLAN — event-driven (mac-address string -> label)
+  fdb:
+    paths:
+      - "openconfig:/network-instances/network-instance[name=*]/fdb/mac-table/entries/entry[mac-address=*][vlan=*]/state/mac-address"
+    stream-mode: on-change
+
+  # 4. FIB / MPLS forwarding (AFT) — event-driven (next-hop string -> label)
+  afts:
+    paths:
+      - "openconfig:/network-instances/network-instance[name=*]/afts/ipv4-unicast/ipv4-entry[prefix=*]/state/next-hop"
+    stream-mode: on-change
+
+  # 5. OSPF neighbors — event-driven (adjacency-state string -> numeric)
+  ospf:
+    paths:
+      - "openconfig:/network-instances/network-instance[name=*]/protocols/protocol[identifier=*][name=*]/ospfv2/areas/area[identifier=*]/interfaces/interface[id=*]/neighbors/neighbor[router-id=*]/state/adjacency-state"
+    stream-mode: on-change
+
+  # 6. BGP neighbors — event-driven (session-state string -> numeric)
+  bgp:
+    paths:
+      - "openconfig:/network-instances/network-instance[name=*]/protocols/protocol[identifier=*][name=*]/bgp/neighbors/neighbor[neighbor-address=*]/state/session-state"
+    stream-mode: on-change
+
+  # 7. LLDP neighbors — event-driven (system-name string -> label)
+  lldp:
+    paths:
+      - "openconfig:/lldp/interfaces/interface[name=*]/neighbors/neighbor[id=*]/state/system-name"
+    stream-mode: on-change
+
+  # 8. MPLS L3VPN routes (frr origin) — label is numeric (count = #routes)
+  l3vpn:
+    paths:
+      - "frr:/bgp-rib/afi-safis/afi-safi[name=*]/routes/route[prefix=*][rd=*]/state/label"
+      - "frr:/bgp-rib/afi-safis/afi-safi[name=*]/routes/route[prefix=*][rd=*]/state/route-target"
+    stream-mode: on-change
+
+  # 9. MPLS LFIB (frr origin) — label-switched 转发表;LDP 一断核心标签项就消失,
+  #    count 掉 = MPLS 转发面故障。shim 不 serve LDP 邻居,故用 LFIB 做告警信号。
+  mpls-lfib:
+    paths:
+      - "frr:/mpls/lfib/entry[label=*]/state/next-hop"
+    stream-mode: on-change
+
+processors:
+  # interface oper/admin-status: UP/DOWN -> 1/0
+  oper-status-str2num:
+    event-strings:
+      value-names: [".*status.*"]
+      transforms:
+        - replace: { apply-on: "value", old: "UP", new: "1" }
+        - replace: { apply-on: "value", old: "DOWN", new: "0" }
+  oper-status-toint:
+    event-convert:
+      values: [".*status.*"]
+      type: int
+
+  # BGP FSM: ESTABLISHED=6 (good) .. IDLE=1
+  bgp-state-str2num:
+    event-strings:
+      value-names: ["session-state"]
+      transforms:
+        - replace: { apply-on: "value", old: "ESTABLISHED", new: "6" }
+        - replace: { apply-on: "value", old: "OPENCONFIRM", new: "5" }
+        - replace: { apply-on: "value", old: "OPENSENT",    new: "4" }
+        - replace: { apply-on: "value", old: "ACTIVE",      new: "3" }
+        - replace: { apply-on: "value", old: "CONNECT",     new: "2" }
+        - replace: { apply-on: "value", old: "IDLE",        new: "1" }
+  bgp-state-toint:
+    event-convert:
+      values: ["session-state"]
+      type: int
+
+  # OSPF adjacency: FULL=6 (good) .. DOWN=0
+  ospf-state-str2num:
+    event-strings:
+      value-names: ["adjacency-state"]
+      transforms:
+        - replace: { apply-on: "value", old: "FULL",     new: "6" }
+        - replace: { apply-on: "value", old: "LOADING",  new: "5" }
+        - replace: { apply-on: "value", old: "EXCHANGE", new: "4" }
+        - replace: { apply-on: "value", old: "EXSTART",  new: "3" }
+        - replace: { apply-on: "value", old: "2-WAY",    new: "2" }
+        - replace: { apply-on: "value", old: "TWO_WAY",  new: "2" }
+        - replace: { apply-on: "value", old: "INIT",     new: "1" }
+        - replace: { apply-on: "value", old: "ATTEMPT",  new: "1" }
+        - replace: { apply-on: "value", old: "DOWN",     new: "0" }
+  ospf-state-toint:
+    event-convert:
+      values: ["adjacency-state"]
+      type: int
+
+outputs:
+  prom-frr:
+    type: prometheus
+    listen: ":9806"
+    path: /metrics
+    strings-as-labels: true   # mac/next-hop/system-name/route-target -> labels, series=1 (count in PromQL)
+    expiration: 6h            # keep last on-change value from eviction
+    event-processors:
+      - oper-status-str2num
+      - oper-status-toint
+      - bgp-state-str2num
+      - bgp-state-toint
+      - ospf-state-str2num
+      - ospf-state-toint

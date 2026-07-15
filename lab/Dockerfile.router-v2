@@ -1,0 +1,11 @@
+# router:v2 = router:v1 + 设备级日志子系统(rsyslog),像真交换机那样把
+# FRR(L3) + netlink(L2/kernel) + 系统日志汇一处,remote syslog 发给收集器。
+# 迁真设备时收集器侧不变,真设备只需 `logging host <collector>`。
+FROM router:v1
+# rsyslog=设备日志子系统;frr-pythontools=frr-reload.py(P1 事务的最小增量下发引擎,拉 python3)
+RUN apk add --no-cache rsyslog frr-pythontools
+COPY rsyslog.conf /etc/rsyslog.conf
+COPY box-init.sh /usr/local/bin/box-init.sh
+RUN chmod +x /usr/local/bin/box-init.sh
+ENTRYPOINT ["/usr/local/bin/box-init.sh"]
+CMD ["sleep", "infinity"]

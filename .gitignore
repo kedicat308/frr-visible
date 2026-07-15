@@ -1,0 +1,12 @@
+# 编译产物(实际构建在 my-frr 虚机 /tmp,防御性排除根目录同名产物)
+/frr-visible
+/trace-aggregator
+/topology-exporter
+/pathtrace-exporter
+/subtest
+*.exe
+*.test
+# 调试 scratch
+.chk.txt
+# OS
+.DS_Store
