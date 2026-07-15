@@ -1,5 +1,8 @@
 # frr-visible
 
+> 📊 **可视化收尾报告 · 读写合体,四平面互证** → **https://kedicat308.github.io/frr-visible/**
+> (治理面 frr-net 与本读平面在 SoT 缝合:txn↔span 贯线 · 遥测同源 · 读平面自愈 · EVPN 解析 · 前缀因果链)
+
 **EN** — A **gNMI shim** that wraps an FRR container: event-driven ingesters feed FRR/kernel state into an OpenConfig cache, exposed over gNMI (Subscribe / Get / Capabilities). It makes an FRR box *look like* a gNMI-speaking router-switch without modifying FRR. Full design in [`design.md`](design.md).
 
 **中** — 给 FRR 容器体外套一层 **gNMI 壳**:事件驱动 ingester 把 FRR/内核状态灌进一棵 OpenConfig cache,对外用 gNMI(Subscribe / Get / Capabilities)暴露。不改 FRR,让它"看起来像"会说 gNMI 的路由交换机。完整设计见 [`design.md`](design.md)。
